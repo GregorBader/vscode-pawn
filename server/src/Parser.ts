@@ -7,58 +7,6 @@ import { ParserManager } from "./ParserManager";
 import { getConnection, isHaveConfigurationCapability, globalSettings } from "./server";
 import { Connection } from 'vscode-languageserver';
 
-enum eParsingList
-{
-	FILE,
-	ENUMERATOR,
-	CONSTANT_EXPRESSION,
-	VARIABLE,
-	FUNCTION,
-	SUBSTITUTION,
-	TAG
-}
-
-/*export const keywords: string[] = [
-	"*=", "/=", "%=", "+=", "-=", "<<=", ">>>=", ">>=", "&=", "^=", "|=",
-	"||", "&&", "==", "!=", "<=", ">=", "<<", ">>>", ">>", "++", "--",
-	"...", "..", "::",
-	"assert", "*begin", "break", "case", "char", "const", "continue", "default",
-	"defined", "do", "else", "emit", "__emit", "*end", "enum", "exit", "for",
-	"forward", "goto", "if", "native", "new", "operator", "public", "return",
-	"sizeof", "sleep", "state", "static", "stock", "switch", "tagof", "*then",
-	"while",
-	"#assert", "#define", "#else", "#elseif", "#emit", "#endif", "#endinput",
-	"#endscript", "#error", "#file", "#if", "#include", "#line", "#pragma",
-	"#tryinclude", "#undef", "#warning",
-	";", ";", "-integer value-", "-rational value-", "-identifier-",
-	"-label-", "-string-",
-	"-any value-", "-numeric value-", "-data offset-", "-local variable-",
-	"-function-", "-native function-", "-nonnegative integer-"
-];*/
-/*export const keywords: string[] = [
-	"new",
-	"function",
-	"public",
-	"stock",
-	"static",
-	"const",
-	"if",
-	"else",
-	"enum",
-	"switch",
-	"case",
-	"default",
-	"return",
-	"continue",
-	"break",
-	"char",
-	"goto",
-	"for",
-	"do",
-	"while",
-	"state"
-];*/
-
 interface ParserResult {
 	type: string;
 	contents: any;
@@ -97,11 +45,8 @@ export class Parser
 		let args: string[] = [ (this.iAmWorkspaceParser) ? path.join(this.mainPath, this.mainFile) : this.mainPath ];
 		const pawnConfig = globalSettings.compiler;
 
-		if (pawnConfig.path != globalSettings.parserPath) {
-			args.push("-i" + path.join(pawnConfig.path, "include") + path.sep);
-		}
-			
 		args = args.concat(pawnConfig.options);
+		args.push("-R");
 
 		/*if (this.iAmWorkspaceParser) {
 			args.push("-i" + this.mainPath + path.sep);
@@ -109,7 +54,7 @@ export class Parser
 
 		++this.parserProgressCount;
 
-		const parser = spawn(path.join(globalSettings.parserPath, "pawnparser.exe"), args, { cwd: path.dirname(this.mainPath) });
+		const parser = spawn(path.join(globalSettings.compiler.path, "pawncc.exe"), args, { cwd: path.dirname(this.mainPath) });
 
 		parser.on("error", (err: Error) => {
 			if (--this.parserProgressCount < 0) {

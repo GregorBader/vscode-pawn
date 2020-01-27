@@ -27,12 +27,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	if (!isValidCompilerPath()) {
 		showNeedCompilerPath();
-
-		vscode.workspace.getConfiguration("pawn").update("compilerPath", context.asAbsolutePath("pawno"), true);
 	}
 
 	if ((vscode.workspace.getConfiguration("pawn").get("compileOptions") as string[]).length == 0) {
-		vscode.workspace.getConfiguration("pawn").update("compileOptions", [ "-d1", "-O1", "-(", "-;" ], true);
+		vscode.workspace.getConfiguration("pawn").update("compileOptions", [ "-d0", "-O3" ], true);
 	}
 
 	let clientOptions: LanguageClientOptions = {
@@ -44,8 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
 			compiler: {
 				path: vscode.workspace.getConfiguration("pawn").get("compilerPath"),
 				options: vscode.workspace.getConfiguration("pawn").get("compileOptions")
-			},
-			parserPath: context.asAbsolutePath("bin")
+			}
 		}
 	};
 
@@ -108,6 +105,10 @@ function runCompile(args: { args: string[] }) {
 		outputChannel.appendLine("Result: " + err.message);
 	});
 
+	compiler.on("exit", (code: number, signal: string) => {
+		outputChannel.appendLine("Compilation exited with " + code + ".");
+	});
+
 	compiler.stderr.on("data", (chunk: string) => {
 		if (chunk) {
 			outputChannel.append(chunk.toString());
@@ -130,11 +131,6 @@ function showNeedCompilerPath(): void {
 
 function isValidCompilerPath(): boolean {
 	let compilerPath: string = (vscode.workspace.getConfiguration("pawn").get("compilerPath") as string);
-
-	if (compilerPath.length == 0) {
-		console.log(vscode.extensions.getExtension("pawn").extensionPath);
-		compilerPath = path.join(vscode.extensions.getExtension("pawn").extensionPath, "pawno");
-	}
 
 	return (compilerPath.length > 0 && fs.existsSync(path.join(compilerPath, "pawncc.exe")));
 }

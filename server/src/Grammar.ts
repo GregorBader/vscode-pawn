@@ -19,18 +19,19 @@ const iCONSTEXPR	= 8;   /* constant expression (or constant symbol) */
 const iFUNCTN		= 9;
 const iREFFUNC		= 10;
 const iVARARGS		= 11;  /* function specified ... as argument(s) */
+const iINTERNAL		= 127; /* symbols for internal use (e.g. documentation, etc.) */
 
-/*  Possible entries for "usage"
+/*  Possible values for "usage"
+ *  This byte is used as a serie of bits, the syntax is different for functions
+ *  and other symbols:
  *
- *  This byte is used as a serie of bits, the syntax is different for
- *  functions and other symbols:
- *
- *  VARIABLE
+ *  VARIABLE / ARRAY
  *  bits: 0     (uDEFINE) the variable is defined in the source file
  *        1     (uREAD) the variable is "read" (accessed) in the source file
  *        2     (uWRITTEN) the variable is altered (assigned a value)
  *        3     (uCONST) the variable is constant (may not be assigned to)
  *        4     (uPUBLIC) the variable is public
+ *        5     (uPACKED) the array variable is defined as packed (only for the last dimension of an array)
  *        6     (uSTOCK) the variable is discardable (without warning)
  *
  *  FUNCTION
@@ -49,26 +50,39 @@ const iVARARGS		= 11;  /* function specified ... as argument(s) */
  *        1     (uREAD) the constant is "read" (accessed) in the source file
  *        2     (uWRITTEN) redundant, but may be set for constants passed by reference
  *        3     (uPREDEF) the constant is pre-defined and should be kept between passes
- *        5     (uENUMROOT) the constant is the "root" of an enumeration
- *        6     (uENUMFIELD) the constant is a field in a named enumeration
+ *        5     (uPACKED) the constant refers to a packed pseudo-array
+ *
+ *  INTERNAL
+ *  bits: 0     (uDEFINE) the symbol is defined in the source file
+ *        1     (uREAD) the symbol is "read" (accessed) in the source file
+ *        2     (uENUMLIST) the symbol is an enumerated constant list
+ *        3     (uSUBSCRIPT) the symbol is a symbolic subscript
+ *        4     (uINCLUDE) the symbol refers to an include file
  */
 const uDEFINE		= 0x001;
 const uREAD			= 0x002;
 const uWRITTEN		= 0x004;
 const uRETVALUE		= 0x004; /* function returns (or should return) a value */
+const uENUMLIST		= 0x004;
 const uCONST		= 0x008;
 const uPROTOTYPED 	= 0x008;
 const uPREDEF		= 0x008; /* constant is pre-defined */
+const uSUBSCRIPT	= 0x008;
+const uINCLUDE		= 0x010;
 const uPUBLIC		= 0x010;
 const uNATIVE		= 0x020;
-const uENUMROOT		= 0x020;
+const uPACKED		= 0x020;
 const uSTOCK		= 0x040;
-const uENUMFIELD	= 0x040;
 const uMISSING		= 0x080;
 const uFORWARD		= 0x100;
+const uVISITED		= 0x200; /* temporary flag, to mark fields as "visited" in recursive loops */
 
-const uTAGOF	= 0x40;  /* set in the "hasdefault" field of the arginfo struct */
-const uSIZEOF	= 0x80;  /* set in the "hasdefault" field of the arginfo struct */
+const uTAGOF		= 0x40;  /* set in the "hasdefault" field of the arginfo struct */
+const uSIZEOF		= 0x80;  /* set in the "hasdefault" field of the arginfo struct */
+
+const sGLOBAL		= 0;     /* global variable/constant class (no states) */
+const sLOCAL		= 1;     /* local variable/constant */
+const sSTATIC		= 2;     /* global life, local scope */
 
 enum eArrayType {
 	INTEGER = 1,
@@ -86,6 +100,7 @@ export interface PawnSymbol {
 	usage: number;
 	tagid: number;
 	file_number: number;
+	scope: number;
 
 	detail: string;
 }
@@ -256,8 +271,8 @@ export class Grammar
 	private removeRedefinations(array: any[], key: string) {
 		return array.filter((item, i) => {
 			return array.findIndex((item2, j) => {
-				return (item[key] == item2[key] &&
-					(!("file_number" in item) || (item["file_number"] == -1 && item2["file_number"] == -1) || (item["file_number"] == item2["file_number"])));
+				return (item[key] == item2[key] && (i == j || !(item[key] === "")) &&
+					(!("file_number" in item) || (item["file_number"] == item2["file_number"])));
 			}) === i;
 		});
 	}
@@ -276,13 +291,13 @@ export class Grammar
 		return "ident" in symbol;
 	}
 	static isEnumerator(symbol: PawnSymbol): symbol is PawnEnumerator {
-		return (symbol.ident == iCONSTEXPR && (symbol.usage & uENUMROOT) == uENUMROOT);
+		return (symbol.ident == iINTERNAL && (symbol.usage & uENUMLIST) == uENUMLIST);
 	}
 	static isEnumeratorField(symbol: PawnSymbol): symbol is PawnEnumeratorField {
-		return (symbol.ident == iCONSTEXPR && (symbol.usage & uENUMFIELD) == uENUMFIELD);
+		return "parent" in symbol;
 	}
 	static isConstExpression(symbol: PawnSymbol): symbol is PawnConstantExpression {
-		return (symbol.ident == iCONSTEXPR && (symbol.usage & (uENUMROOT | uENUMFIELD)) == 0);
+		return (symbol.ident == iCONSTEXPR);
 	}
 	static isFunction(symbol: PawnSymbol): symbol is PawnFunction {
 		return (symbol.ident == iFUNCTN);
@@ -320,28 +335,29 @@ export class Grammar
 
 		symbol.detail = "";
 
-		if (symbol.file_number > 0/* && (Grammar.isVariable(symbol) || Grammar.isFunction(symbol))*/) {
+		if (symbol.scope == sSTATIC) {
 			detail = "static ";
 		}
 
 		if (Grammar.isEnumerator(symbol)) {
-			detail += "enum ";
+			detail += "const ";
 		}
 		else {
 			if (Grammar.isFunction(symbol)) {
 				detail += ((symbol.usage & uNATIVE) == uNATIVE) ? "native " : "forward ";
 			}
 
-			if ((symbol.usage & uENUMFIELD) == 0 && (symbol.usage & uSTOCK) == uSTOCK) {
+			if ((symbol.usage & uSTOCK) == uSTOCK) {
 				detail += "stock ";
 			}
 
-			if (Grammar.isVariable(symbol)) {
+			if (Grammar.isVariable(symbol) && symbol.scope != sSTATIC) {
 				detail += "new ";
 			}
 		}
 
-		if (!Grammar.isFunction(symbol) && (symbol.usage & uCONST) == uCONST) {
+		if (!Grammar.isFunction(symbol) &&
+			Grammar.isConstExpression(symbol) && !Grammar.isEnumeratorField(symbol)) {
 			detail += "const ";
 		}
 
@@ -393,7 +409,8 @@ export class Grammar
 		if (Grammar.isVariable(symbol)) {
 			for (let i = 0; i < symbol.array.length; ++i) {
 				if (symbol.array[i].array_type == eArrayType.INTEGER) {
-					detail += '[' + symbol.array[i].array_value + ']';
+					if (symbol.array[i].array_value > 0)
+						detail += '[' + symbol.array[i].array_value + ']';
 				} else {
 					this.enumerators.some((value: PawnEnumerator) => {
 						if (value.tagid == symbol.array[i].array_value) {
@@ -411,7 +428,7 @@ export class Grammar
 				detail += "[]";
 			}
 		}
-		else if (symbol.ident == iCONSTEXPR && (symbol.usage & uENUMFIELD) == uENUMFIELD) {
+		else if (symbol.ident == iINTERNAL && (symbol.usage & uENUMLIST) == uENUMLIST) {
 			const enumSymbol = symbol as PawnConstantExpression;
 
 			if (enumSymbol.array[0].array_type == eArrayType.INTEGER) {
@@ -428,6 +445,11 @@ export class Grammar
 					return false;
 				});
 			}
+		}
+		else if (symbol.ident == iCONSTEXPR) {
+			const constSymbol = symbol as PawnConstantExpression;
+
+			detail += " = " + constSymbol.value;
 		}
 
 		if (Grammar.isArgument(symbol)) {
@@ -992,7 +1014,7 @@ export class Grammar
 		} else if (Grammar.isConstantValue(symbol) || Grammar.isConstExpression(symbol)) {
 			return (name.length == 0 || name === symbol.name);
 		} else {
-			return ((name.length == 0 || name === symbol.name) && (symbol.file_number == -1 || (fileNumber == symbol.file_number)));
+			return ((name.length == 0 || name === symbol.name) && (symbol.scope == sGLOBAL || (fileNumber == symbol.file_number)));
 		}
 	}
 

@@ -1,6 +1,11 @@
-**/*.ts
-**/tsconfig.json
 .vscode/**
-out/**/*.map
+**/*.ts
+**/*.map
 .gitignore
-tsconfig.json
+**/tsconfig.json
+client/node_modules/**
+!client/node_modules/vscode-jsonrpc/**
+!client/node_modules/vscode-languageclient/**
+!client/node_modules/vscode-languageserver-protocol/**
+!client/node_modules/vscode-languageserver-types/**
+!client/node_modules/semver/**

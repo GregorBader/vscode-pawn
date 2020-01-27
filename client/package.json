@@ -1,9 +1,9 @@
 {
 	"name": "pawn-language-client",
 	"description": "VSCode part of a language server",
-	"author": "Qoo",
+	"author": "Microtronics Engineering GmbH",
+	"license": "MIT",
 	"version": "0.0.1",
-	"publisher": "Qoo",
 	"engines": {
 		"vscode": "^1.23.0"
 	},

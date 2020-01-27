@@ -1,18 +1,19 @@
 {
 	"name": "pawn",
-	"displayName": "PAWN Language for Visual Studio Code",
-	"description": "An extension for VS Code which provides support for the PAWN language.",
+	"displayName": "PAWN 4.x Language for Visual Studio Code",
+	"description": "An extension for VS Code which provides support for the PAWN 4.x language.",
 	"bugs": {
-		"url": "https://github.com/zndn1997/vscode-pawn/issues"
+		"url": "https://tbd"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/zndn1997/vscode-pawn.git"
+		"url": "https://tbd"
 	},
 	"icon": "pawn.ico",
-	"author": "Qoo",
-	"version": "0.0.3",
-	"publisher": "Qoo",
+	"author": "Microtronics Engineering GmbH",
+	"license": "MIT",
+	"version": "0.0.1",
+	"publisher": "tbd",
 	"categories": [
 		"Programming Languages"
 	],
@@ -23,10 +24,7 @@
 		"onLanguage:pawn"
 	],
 	"keywords": [
-		"Pawn",
-		"SA-MP",
-		"SAMP",
-		"pawno"
+		"Pawn"
 	],
 	"main": "./client/out/extension",
 	"contributes": {
@@ -37,15 +35,13 @@
 				"pawn.compilerPath": {
 					"type": "string",
 					"default": "",
-					"description": "\"pawno\" Folder path"
+					"description": "\"pawncc\" Folder path"
 				},
 				"pawn.compileOptions": {
 					"type": "array",
 					"default": [
-						"-d1",
-						"-O1",
-						"-(",
-						"-;"
+						"-d0",
+						"-O3"
 					],
 					"description": "Compile option arguments"
 				}
@@ -91,8 +87,7 @@
 		"vscode:prepublish": "cd client && npm run update-vscode && cd .. && npm run compile",
 		"compile": "tsc -b",
 		"watch": "tsc -b -w",
-		"postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-		"test": "sh ./scripts/e2e.sh"
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."
 	},
 	"devDependencies": {
 		"@types/mocha": "^5.2.7",

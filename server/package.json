@@ -1,8 +1,9 @@
 {
 	"name": "pawn-language-server",
-	"description": "PAWN Language Server",
+	"description": "PAWN 4.x Language Server",
 	"version": "0.0.1",
-	"author": "Qoo",
+	"author": "Microtronics Engineering GmbH",
+	"license": "MIT",
 	"engines": {
 		"node": "*"
 	},

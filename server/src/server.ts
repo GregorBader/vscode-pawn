@@ -40,10 +40,9 @@ let hasDiagnosticRelatedInformationCapability: boolean = false;
 
 export interface PawnSettings {
 	compiler: { path: string, options: string[] };
-	parserPath: string;
 }
 
-export let globalSettings: PawnSettings = { compiler: { path: "", options: [] }, parserPath: "" };
+export let globalSettings: PawnSettings = { compiler: { path: "", options: [] } };
 
 connection.onInitialize((params: InitializeParams) => {
 	let capabilities = params.capabilities;
@@ -63,7 +62,6 @@ connection.onInitialize((params: InitializeParams) => {
 
 	if (params.initializationOptions) {
 		globalSettings.compiler = params.initializationOptions.compiler;
-		globalSettings.parserPath = params.initializationOptions.parserPath;
 	}
 
 	if (hasWorkspaceFolderCapability && params.workspaceFolders !== null) {
@@ -609,9 +607,6 @@ async function compile(uri: string): Promise<void> {
 
 	args = args.concat(globalSettings.compiler.options);
 
-	/*if (globalSettings.compiler.path != globalSettings.parserPath) {
-		args.push("-i" + path.join(globalSettings.compiler.path, "include") + path.sep);
-	}*/
 	if (parser.isWorkspaceParser()) {
 		args.push("-i" + filePath);
 	}
