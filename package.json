@@ -44,6 +44,11 @@
 						"-O3"
 					],
 					"description": "Compile option arguments"
+				},
+				"pawn.mainFile": {
+					"type": "string",
+					"default": "main.p",
+					"description": "Main starting file for compile e.g. main.p"
 				}
 			}
 		},

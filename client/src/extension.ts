@@ -41,7 +41,8 @@ export function activate(context: vscode.ExtensionContext) {
 		initializationOptions: {
 			compiler: {
 				path: vscode.workspace.getConfiguration("pawn").get("compilerPath"),
-				options: vscode.workspace.getConfiguration("pawn").get("compileOptions")
+				options: vscode.workspace.getConfiguration("pawn").get("compileOptions"),
+				mainFile: vscode.workspace.getConfiguration("pawn").get("mainFile")
 			}
 		}
 	};

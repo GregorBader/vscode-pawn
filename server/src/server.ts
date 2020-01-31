@@ -44,10 +44,10 @@ let hasWorkspaceFolderCapability: boolean = false;
 let hasDiagnosticRelatedInformationCapability: boolean = false;
 
 export interface PawnSettings {
-	compiler: { path: string, options: string[] };
+	compiler: { path: string, options: string[], mainFile: string };
 }
 
-export let globalSettings: PawnSettings = { compiler: { path: "", options: [] } };
+export let globalSettings: PawnSettings = { compiler: { path: "", options: [], mainFile: "" } };
 
 connection.onInitialize((params: InitializeParams) => {
 	let capabilities = params.capabilities;
@@ -128,6 +128,9 @@ connection.onDidChangeConfiguration((params: DidChangeConfigurationParams) => {
 	const pawnConfig = connection.workspace.getConfiguration({ section: "pawn"}).then((value) => {
 		globalSettings.compiler.path = value.compilerPath;
 		globalSettings.compiler.options = value.compileOptions;
+		globalSettings.compiler.mainFile = value.mainFile;
+		
+		connection.console.log(value.mainFile);
 
 		for (let i = 0; i < value.compileOptions.length; ++i) {
 			connection.console.log(value.compileOptions[i]);

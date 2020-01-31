@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import { Connection, WorkspaceFolder } from 'vscode-languageserver';
-import { isHaveWorkspaceFolderCapability } from './server';
+import { isHaveWorkspaceFolderCapability, globalSettings } from './server';
 import { Parser } from "./Parser";
 import { PawnFile } from './Grammar';
 import * as assert from 'assert';
@@ -56,6 +56,15 @@ export class ParserManager {
 		const knownName: string[] = [ path.basename(workspacePath), "main" ]; // basename of workspacePath must return last directory name
 		let mainFile: string = "";
 
+		if(globalSettings.compiler.mainFile.length > 0)
+		{
+			if(fs.existsSync(path.join(workspacePath, globalSettings.compiler.mainFile)))
+			{
+				return globalSettings.compiler.mainFile;
+			}
+		}
+		
+		// configured mainFile not found
 		knownName.push("main");
 
 		knownName.some((fileName) => {
@@ -70,7 +79,7 @@ export class ParserManager {
 
 			return (mainFile.length > 0);
 		});
-	
+		
 		return mainFile;
 	}
 
