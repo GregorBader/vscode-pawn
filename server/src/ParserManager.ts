@@ -74,20 +74,8 @@ export class ParserManager {
 		return mainFile;
 	}
 
-	static getParser(currentPath: string, autoCreate: boolean = true): Parser | undefined {
-		for (let workspace of ParserManager.workspaces.keys()) {
-			if (currentPath.indexOf(workspace) == -1) {
-				continue;
-			}
-
-			const workspaceParser: Parser = ParserManager.parsers.get(workspace)!;
-
-			if (workspaceParser.isInProgress()) {
-				return undefined;
-			}
-		}
-
-		const key: string = ParserManager.getCurrentPath(currentPath);
+	static async getParser(currentPath: string, autoCreate: boolean = true): Promise<Parser | undefined> {
+		const key: string = await ParserManager.getCurrentPath(currentPath);
 		let parser: Parser | undefined = ParserManager.parsers.get(key);
 
 		// If parser of file not found(Workspaces parser already created), create parser
@@ -97,13 +85,13 @@ export class ParserManager {
 		}
 		// //
 
-		return parser;
+		return Promise.resolve(parser);
 	}
 
 	// Search parser key of file path //
-	static getCurrentPath(originalPath: string): string {
+	static async getCurrentPath(originalPath: string): Promise<string> {
 		if (!isHaveWorkspaceFolderCapability()) {
-			return originalPath;
+			return Promise.resolve(originalPath);
 		}
 
 		// First, Check is file workspace main file? //
@@ -114,7 +102,7 @@ export class ParserManager {
 			const directory: string = path.dirname(originalPath);
 
 			if (originalPath == workspace || (directory == workspace && path.basename(originalPath) == workspaceParser.getMainFile())) {
-				return workspace;
+				return Promise.resolve(workspace);
 			}
 			// //
 		}
@@ -134,6 +122,9 @@ export class ParserManager {
 			const workspaceParser: Parser = ParserManager.parsers.get(workspace)!;
 			let isIncludeFile: boolean = false;
 
+			// wait for any ongoing parsing
+			await workspaceParser.waitForResult();
+
 			workspaceParser.grammar.files.some((includeFile: PawnFile) => {
 				if (includeFile.file_path == originalPath) {
 					isIncludeFile = true;
@@ -145,18 +136,18 @@ export class ParserManager {
 			});
 
 			if (isIncludeFile) {
-				return currentPath;
+				return Promise.resolve(currentPath);
 			}
 		}
 		// //
 
-		return originalPath;
+		return Promise.resolve(originalPath);
 	}
 	// //
 
-	static removeParser(currentPath: string): void {
-		const key: string = ParserManager.getCurrentPath(currentPath);
-		const parser: Parser | undefined = ParserManager.getParser(key, false);
+	static async removeParser(currentPath: string) {
+		const key: string = await ParserManager.getCurrentPath(currentPath);
+		const parser: Parser | undefined = await ParserManager.getParser(key, false);
 
 		if (parser !== undefined) {
 			this.parsers.delete(key);
@@ -171,7 +162,7 @@ export class ParserManager {
 		return ParserManager.workspacesParserInitalized;
 	}
 
-	static updateGarbageCollect(workspaceParser: Parser): void {
+	static async updateGarbageCollect(workspaceParser: Parser) {
 		if (!isHaveWorkspaceFolderCapability() || !ParserManager.workspacesParserInitalized) {
 			return;
 		}
@@ -181,7 +172,7 @@ export class ParserManager {
 				continue;
 			}
 
-			const parser: Parser | undefined = ParserManager.getParser(targetParser[0], false);
+			const parser: Parser | undefined = await ParserManager.getParser(targetParser[0], false);
 
 			if (parser !== undefined && parser.isWorkspaceParser()) {
 				ParserManager.parsers.delete(targetParser[0]);

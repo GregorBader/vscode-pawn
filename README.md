@@ -10,6 +10,8 @@ It is a fork from original work: https://github.com/zndn1997/vscode-pawn.
 * Hover
 * Signature help
 * Compile
+* Symbol outline
+* Go to/Peek definition
 
 ## How to install?
 1. Install this extension.

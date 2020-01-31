@@ -1,5 +1,5 @@
 import { getConnection, SYMBOL_NAME_REGEX } from "./server";
-import { TextDocument, Range, Connection } from 'vscode-languageserver';
+import { TextDocument, Range, Connection, SymbolInformation, SymbolKind} from 'vscode-languageserver';
 import * as path from "path";
 import * as assert from "assert";
 
@@ -58,6 +58,7 @@ const iINTERNAL		= 127; /* symbols for internal use (e.g. documentation, etc.) *
  *        2     (uENUMLIST) the symbol is an enumerated constant list
  *        3     (uSUBSCRIPT) the symbol is a symbolic subscript
  *        4     (uINCLUDE) the symbol refers to an include file
+ *        5     (uSUBST) the symbol is a normal substitution
  */
 const uDEFINE		= 0x001;
 const uREAD			= 0x002;
@@ -72,6 +73,7 @@ const uINCLUDE		= 0x010;
 const uPUBLIC		= 0x010;
 const uNATIVE		= 0x020;
 const uPACKED		= 0x020;
+const uSUBST		= 0x020;
 const uSTOCK		= 0x040;
 const uMISSING		= 0x080;
 const uFORWARD		= 0x100;
@@ -85,8 +87,9 @@ const sLOCAL		= 1;     /* local variable/constant */
 const sSTATIC		= 2;     /* global life, local scope */
 
 enum eArrayType {
-	INTEGER = 1,
-	ENUMERATOR
+	ENUMLIST = 0,
+	CELL,
+	PACKED
 }
 
 export interface PawnFile {
@@ -100,6 +103,7 @@ export interface PawnSymbol {
 	usage: number;
 	tagid: number;
 	file_number: number;
+	line_number: number;
 	scope: number;
 
 	detail: string;
@@ -140,11 +144,10 @@ export interface PawnFunction extends PawnSymbol {
 	argument: PawnArgument[];
 }
 
-export interface PawnSubstitute {
+export interface PawnSubstitute extends PawnSymbol {
 	pattern: string;
 	match_length: number;
 	substitution: string;
-	detail: string;
 }
 
 interface PawnConstantValue {
@@ -406,20 +409,12 @@ export class Grammar
 
 		detail += symbol.name;
 
-		if (Grammar.isVariable(symbol)) {
+		if (Grammar.isVariable(symbol) && "array" in symbol) {
 			for (let i = 0; i < symbol.array.length; ++i) {
-				if (symbol.array[i].array_type == eArrayType.INTEGER) {
-					if (symbol.array[i].array_value > 0)
-						detail += '[' + symbol.array[i].array_value + ']';
-				} else {
-					this.enumerators.some((value: PawnEnumerator) => {
-						if (value.tagid == symbol.array[i].array_value) {
-							detail += '[' + value.name + ']';
-							return true;
-						}
-
-						return false;
-					});
+				if (symbol.array[i].array_type == eArrayType.CELL) {
+					detail += '[' + symbol.array[i].array_value + ']';
+				} else if (symbol.array[i].array_type == eArrayType.PACKED) {
+					detail += '{' + symbol.array[i].array_value + '}';
 				}
 			}
 		}
@@ -431,19 +426,10 @@ export class Grammar
 		else if (symbol.ident == iINTERNAL && (symbol.usage & uENUMLIST) == uENUMLIST) {
 			const enumSymbol = symbol as PawnConstantExpression;
 
-			if (enumSymbol.array[0].array_type == eArrayType.INTEGER) {
+			if (enumSymbol.array[0].array_type == eArrayType.ENUMLIST) {
 				if (enumSymbol.array[0].array_value > 1) {
 					detail += '[' + enumSymbol.array[0].array_value + ']';
 				}
-			} else {
-				this.enumerators.some((value: PawnEnumerator) => {
-					if (value.tagid == enumSymbol.array[0].array_value) {
-						detail += '[' + value.name + ']';
-						return true;
-					}
-
-					return false;
-				});
 			}
 		}
 		else if (symbol.ident == iCONSTEXPR) {
@@ -1026,5 +1012,39 @@ export class Grammar
 		}
 
 		return -1;
+	}
+
+	docSymbolFinder(fileNumber: number): SymbolInformation[] {
+		let symbols: SymbolInformation[] = [];
+
+		this.substitutions.forEach((sym: PawnSubstitute) => {
+			if (sym.file_number == fileNumber && sym.line_number > 0) {
+				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
+				symbols.push(SymbolInformation.create(sym.pattern, sym.usage & uSUBSCRIPT ? SymbolKind.Interface : SymbolKind.Constant, range));
+			}
+		});
+
+		this.constantExpressions.forEach((sym: PawnConstantExpression) => {
+			if (sym.file_number == fileNumber && sym.line_number > 0) {
+				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
+				symbols.push(SymbolInformation.create(sym.name, SymbolKind.Constant, range));
+			}
+		});
+
+		this.variables.forEach((sym: PawnSymbol) => {
+			if (sym.file_number == fileNumber && sym.line_number > 0) {
+				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
+				symbols.push(SymbolInformation.create(sym.name, "array" in sym ? SymbolKind.Array : SymbolKind.Variable, range));
+			}
+		});
+
+		this.functions.forEach((sym: PawnFunction) => {
+			if (sym.file_number == fileNumber && sym.line_number > 0) {
+				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
+				symbols.push(SymbolInformation.create(sym.name, SymbolKind.Function, range));
+			}
+		});
+
+		return symbols;
 	}
 }

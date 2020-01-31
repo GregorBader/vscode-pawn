@@ -20,6 +20,7 @@ export class Parser
 	errorManager: ErrorManager;
 	private stdoutBuffer: string;
 	private parserProgressCount: number;
+	private parserResolve: any[];
 	private iAmWorkspaceParser: boolean;
 
 	constructor(mainPath: string, isWorkspaceParser: boolean = false) {
@@ -28,6 +29,7 @@ export class Parser
 		this.errorManager = new ErrorManager();
 		this.stdoutBuffer = " ";
 		this.parserProgressCount = 0;
+		this.parserResolve = [];
 		this.iAmWorkspaceParser = isWorkspaceParser;
 	}
 
@@ -131,9 +133,30 @@ export class Parser
 
 			connection.console.log("Path \"" + this.mainPath + "\" Parsing end.");
 
+			/* resolve all waiting promises */
+			while(this.parserResolve.length > 0) {
+				const resolve = this.parserResolve.shift();
+				if (resolve) {
+					resolve();
+				}
+			}
+
 			if (this.isWorkspaceParser()) {
 				ParserManager.updateGarbageCollect(this);
 			}
+		});
+	}
+
+    /**
+     * Wait for parser result if it is currently in progress.
+     */
+	async waitForResult(): Promise<void> {
+		return new Promise((resolve, reject) => {
+			if(this.isInProgress()) {
+				this.parserResolve.push(resolve);
+			}
+			else
+				resolve();
 		});
 	}
 

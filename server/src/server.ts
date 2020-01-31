@@ -22,8 +22,13 @@ import {
 	MarkupContent,
 	MarkupKind,
 	DidChangeConfigurationNotification,
-	DidChangeWatchedFilesNotification
+	DidChangeWatchedFilesNotification,
+	Definition,
+	Location,
+	DocumentSymbolParams,
+	SymbolInformation
 } from "vscode-languageserver";
+import { URI } from "vscode-uri"
 import { Parser } from "./Parser";
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import { PawnFunction, PawnSubstitute, Grammar, PawnSymbol, PawnEnumeratorField } from "./Grammar";
@@ -95,7 +100,9 @@ connection.onInitialize((params: InitializeParams) => {
 			signatureHelpProvider: {
 				triggerCharacters: [ '(', ',' ]
 			},
-			hoverProvider: true
+			hoverProvider: true,
+			definitionProvider: true,
+			documentSymbolProvider: true
 		}
 	};
 });
@@ -171,31 +178,31 @@ connection.onDidCloseTextDocument((params: DidCloseTextDocumentParams): void => 
 	connection.console.log(document + " has closed.");
 });*/
 
-documents.onDidOpen((e: TextDocumentChangeEvent) => {
+documents.onDidOpen(async (e: TextDocumentChangeEvent) => {
 	const documentPath = uriToFilePath(e.document.uri)!;
 
 	connection.console.log(documentPath + " has opened.");
 
-	const parser: Parser | undefined = ParserManager.getParser(documentPath);
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
 	
 	if (parser !== undefined && !parser.isWorkspaceParser()) {
 		parser.run();
 	}
 });
 
-documents.onDidSave((e: TextDocumentChangeEvent) => {
+documents.onDidSave(async (e: TextDocumentChangeEvent) => {
 	const documentPath = uriToFilePath(e.document.uri)!;
 
 	connection.console.log(documentPath + " has saved.");
 
-	const parser: Parser | undefined = ParserManager.getParser(documentPath);
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
 
 	if (parser !== undefined) {
 		parser.run();
 	}
 });
 
-documents.onDidChangeContent((e: TextDocumentChangeEvent) => {
+documents.onDidChangeContent(async (e: TextDocumentChangeEvent) => {
 	/*const documentPath = uriToFilePath(e.document.uri)!;
 	const parser: Parser | undefined = ParserManager.getParser(documentPath);
 
@@ -210,30 +217,32 @@ documents.onDidChangeContent((e: TextDocumentChangeEvent) => {
 	}*/ /* It is require pawnparser project refactoring */
 });
 
-documents.onDidClose(e => {
+documents.onDidClose(async (e: TextDocumentChangeEvent) => {
 	const documentPath = uriToFilePath(e.document.uri)!;
 
 	connection.console.log(documentPath + " has closed.");
 
-	const parser: Parser | undefined = ParserManager.getParser(documentPath, false);
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath, false);
 
 	if (parser !== undefined && !parser.isWorkspaceParser()) {
 		ParserManager.removeParser(documentPath);
 	}
 });
 
-connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
+connection.onDidChangeWatchedFiles(async (params: DidChangeWatchedFilesParams) => {
 	connection.console.log("We received an file change event");
 });
 
-connection.onCompletion((params: CompletionParams): CompletionItem[] => {
+connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem[]> => {
 	const document = documents.get(params.textDocument!.uri)!;
 	const documentPath: string = uriToFilePath(params.textDocument!.uri)!;
-	const parser: Parser | undefined = ParserManager.getParser(documentPath);
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
 
 	if (parser === undefined) {
 		return [];
 	}
+	// wait for any ongoing parsing
+	await parser.waitForResult();
 
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
@@ -296,14 +305,16 @@ connection.onCompletion((params: CompletionParams): CompletionItem[] => {
 	return completionItemList;
 });
 
-connection.onSignatureHelp((params: TextDocumentPositionParams, token: CancellationToken): SignatureHelp | null => {
+connection.onSignatureHelp(async (params: TextDocumentPositionParams, token: CancellationToken): Promise<SignatureHelp | null> => {
 	const document = documents.get(params.textDocument.uri)!;
 	const documentPath: string = uriToFilePath(params.textDocument!.uri)!;
-	const parser: Parser | undefined = ParserManager.getParser(documentPath);
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
 
 	if (parser === undefined) {
 		return null;
 	}
+	// wait for any ongoing parsing
+	await parser.waitForResult();
 
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
@@ -371,14 +382,16 @@ connection.onSignatureHelp((params: TextDocumentPositionParams, token: Cancellat
 	};
 });
 
-connection.onHover((params: TextDocumentPositionParams, token: CancellationToken): Hover | null => {
+connection.onHover(async (params: TextDocumentPositionParams, token: CancellationToken): Promise<Hover | null> => {
 	const document = documents.get(params.textDocument.uri)!;
 	const documentPath: string = uriToFilePath(params.textDocument!.uri)!;
-	const parser: Parser | undefined = ParserManager.getParser(documentPath);
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
 
 	if (parser === undefined) {
 		return null;
 	}
+	// wait for any ongoing parsing
+	await parser.waitForResult();
 
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
@@ -432,6 +445,77 @@ connection.onHover((params: TextDocumentPositionParams, token: CancellationToken
 	return {
 		contents: markupContent
 	};
+});
+
+connection.onDefinition(async (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition | null> => {
+	const document = documents.get(params.textDocument.uri)!;
+	const documentPath: string = uriToFilePath(params.textDocument!.uri)!;
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
+
+	if (parser === undefined) {
+		return null;
+	}
+	// wait for any ongoing parsing
+	await parser.waitForResult();
+
+	const grammar: Grammar = parser.grammar;
+	const fileNumber: number = grammar.getFileNumber(documentPath);
+
+	if (isPositionInString(document, params.position) || isPositionInComment(document, params.position)) {
+		//connection.console.log("You are in string or comment.");
+		return null;
+	}
+
+	const callToken: { start: number, token: string } | undefined = previousToken(document, params.position);
+
+	if (callToken === undefined) {
+		return null;
+	}
+
+	let symbol;
+	
+	if (!(symbol = grammar.substitutions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, callToken.token.length); }))) {
+		if (!(symbol = grammar.tags.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+			if (!(symbol = grammar.constantExpressions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+				if (!(symbol = grammar.enumerators.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+					if (!(symbol = grammar.variables.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+						if (!(symbol = grammar.functions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+							//connection.console.log("Symbol " + callToken.token + " cannot found.");
+							return null;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if ("file_number" in symbol && "line_number" in symbol)	{
+		const definitionResource = URI.file(grammar.files[symbol.file_number].file_path);
+		const range = Range.create(symbol.line_number-1, 0, symbol.line_number-1, 0);
+	
+		return Location.create(definitionResource.toString(), range);
+	}
+
+	return null;
+});
+
+connection.onDocumentSymbol(async (params: DocumentSymbolParams, token: CancellationToken): Promise<SymbolInformation[] | null> => {
+	const documentPath: string = uriToFilePath(params.textDocument!.uri)!;
+	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
+
+	// connection.console.log("onDocumentSymbol");
+	if (parser === undefined) {
+		return null;
+	}
+	// wait for any ongoing parsing
+	await parser.waitForResult();
+
+	const grammar: Grammar = parser.grammar;
+	const fileNumber: number = grammar.getFileNumber(documentPath);
+
+	const result = grammar.docSymbolFinder(fileNumber);
+	// connection.console.log(" symbols: " + result.length);
+	return result;
 });
 
 documents.listen(connection);
@@ -591,7 +675,7 @@ export function getConnection() {
 
 async function compile(uri: string): Promise<void> {
 	const filePath: string = uriToFilePath(uri)!;
-	let parser: Parser | undefined = ParserManager.getParser(filePath);
+	let parser: Parser | undefined = await ParserManager.getParser(filePath);
 
 	if (parser === undefined) {
 		return;
