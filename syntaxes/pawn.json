@@ -33,7 +33,7 @@
 			"name": "support.class.pawn"
 		},
 		{
-			"match": "{\\s*(?:(?:\\s*,\\s*)?[a-zA-Z_][\\w]*)*\\s*}\\s*:",
+			"match": "(\\{[\\w ,]+\\}:)",
 			"name": "support.class.pawn"
 		},
 		{
@@ -81,6 +81,29 @@
 			"end": "(?=(?://|/\\*))|(?<!\\\\)(?=\\n)",
 			"name": "meta.preprocessor.macro.pawn",
 			"patterns": [
+				{
+					"begin": "\\[",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.section.subscript.begin.pawn"
+						}
+					},
+					"end": "\\]",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.section.subscript.end.pawn"
+						}
+					},
+					"name": "meta.preprocessor.subscript.pawn",
+					"patterns": [
+						{
+							"include": "#access"
+						},
+						{
+							"include": "$base"
+						}
+					]
+				},
 				{
 					"include": "$base"
 				}
