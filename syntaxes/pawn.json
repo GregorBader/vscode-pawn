@@ -41,7 +41,7 @@
 			"name": "storage.modifier.pawn"
 		},
 		{
-			"match": "\\b(NULL|true|false|TRUE|FALSE|sizeof)\\b",
+			"match": "\\b(NULL|true|false|TRUE|FALSE|sizeof|tagof)\\b",
 			"name": "constant.language.pawn"
 		},
 		{
@@ -475,6 +475,9 @@
 			},
 			"name": "meta.parens.pawn",
 			"patterns": [
+				{
+					"include": "#parens"
+				},
 				{
 					"include": "$base"
 				}

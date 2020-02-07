@@ -1,5 +1,5 @@
 import { getConnection, SYMBOL_NAME_REGEX } from "./server";
-import { TextDocument, Range, Connection, SymbolInformation, SymbolKind} from 'vscode-languageserver';
+import { TextDocument, Range, Connection, DocumentSymbol, SymbolKind} from 'vscode-languageserver';
 import * as path from "path";
 import * as assert from "assert";
 
@@ -105,6 +105,7 @@ export interface PawnSymbol {
 	file_number: number;
 	line_number: number;
 	scope: number;
+	fvisible?: number;
 
 	detail: string;
 }
@@ -124,6 +125,7 @@ interface PawnArray {
 }
 
 interface PawnVariable extends PawnSymbol {
+	scope_end: number;
 	array: PawnArray[];
 }
 
@@ -131,16 +133,17 @@ interface PawnEnumerator extends PawnSymbol {
 	field: PawnEnumeratorField[];
 }
 
-interface PawnArgument extends PawnSymbol {
-	dimension: number;
+export interface PawnArgument extends PawnSymbol {
 	tag_list: number[];
 	hasdefault: number;
 	default_value: number | string;
-	reference: number | string;
-	reference_value: number;
+	defvalue_tag: number;
+
+	isargof?: PawnFunction;
 }
 
 export interface PawnFunction extends PawnSymbol {
+	functn_end: number;
 	argument: PawnArgument[];
 }
 
@@ -216,8 +219,9 @@ export class Grammar
 		this.functions = this.functions.concat(functions);
 	}
 	addVariables(variables: PawnVariable[]) {
+		this.variables = [];
 		this.variables = this.variables.concat(variables);
-		this.variables = this.removeRedefinations(this.variables, "name");
+		// this.variables = this.removeRedefinations(this.variables, "name");
 	}
 	addSubstitutes(substitutions: PawnSubstitute[]) {
 		substitutions = substitutions.filter((value: PawnSubstitute) => { return (value.pattern.indexOf("|||") == -1); });
@@ -248,12 +252,12 @@ export class Grammar
 			this.makeDetail(this.enumerators[i]);
 		}
 
-		for (let i = 0; i < this.functions.length; ++i) {
-			this.makeDetail(this.functions[i]);
-		}
-
 		for (let i = 0; i < this.variables.length; ++i) {
 			this.makeDetail(this.variables[i]);
+		}
+
+		for (let i = 0; i < this.functions.length; ++i) {
+			this.makeDetail(this.functions[i]);
 		}
 
 		for (let i = 0; i < this.substitutions.length; ++i) {
@@ -306,11 +310,10 @@ export class Grammar
 		return (symbol.ident == iFUNCTN);
 	}
 	static isVariable(symbol: PawnSymbol): symbol is PawnVariable {
-		return (!("dimension" in symbol) && (symbol.ident == iVARIABLE || symbol.ident == iARRAY));
+		return (symbol.ident == iVARIABLE || symbol.ident == iREFERENCE || symbol.ident == iARRAY || symbol.ident == iREFARRAY);
 	}
 	static isArgument(symbol: PawnSymbol): symbol is PawnArgument {
-		return ((symbol.ident == iVARIABLE || symbol.ident == iREFERENCE || symbol.ident == iREFARRAY || symbol.ident == iVARARGS) &&
-			("dimension" in symbol));
+		return "hasdefault" in symbol;
 	}
 	static isSubstitute(symbol: any): symbol is PawnSubstitute {
 		return "pattern" in symbol;
@@ -324,7 +327,10 @@ export class Grammar
 			symbol.detail = "#define " + symbol.pattern;
 			
 			if (symbol.substitution.length > 0) {
-				symbol.detail += ' ' + symbol.substitution;
+				if (symbol.usage & uSUBSCRIPT)
+					symbol.detail += '[' + symbol.substitution + ']';
+				else
+					symbol.detail += ' ' + symbol.substitution;
 			}
 
 			return;
@@ -338,25 +344,27 @@ export class Grammar
 
 		symbol.detail = "";
 
-		if (symbol.scope == sSTATIC) {
-			detail = "static ";
+		if (symbol.scope == sSTATIC || "fvisible" in symbol) {
+			detail += "static ";
+		} else if ((symbol.usage & uSTOCK) == uSTOCK) {
+			detail += "stock ";
+		} else if (!Grammar.isFunction(symbol) && (symbol.usage & uPUBLIC) == uPUBLIC) {
+			detail += "public "
+		} else if (Grammar.isVariable(symbol) && !Grammar.isArgument(symbol)) {
+			detail += "new ";
+		}
+
+		if (Grammar.isFunction(symbol)) {
+			if (symbol.usage & uFORWARD)
+				detail += "forward "
+			if (symbol.usage & uNATIVE)
+				detail += "native "
+			else if (symbol.usage & uPUBLIC)
+				detail += "public "
 		}
 
 		if (Grammar.isEnumerator(symbol)) {
 			detail += "const ";
-		}
-		else {
-			if (Grammar.isFunction(symbol)) {
-				detail += ((symbol.usage & uNATIVE) == uNATIVE) ? "native " : "forward ";
-			}
-
-			if ((symbol.usage & uSTOCK) == uSTOCK) {
-				detail += "stock ";
-			}
-
-			if (Grammar.isVariable(symbol) && symbol.scope != sSTATIC) {
-				detail += "new ";
-			}
 		}
 
 		if (!Grammar.isFunction(symbol) &&
@@ -411,16 +419,11 @@ export class Grammar
 
 		if (Grammar.isVariable(symbol) && "array" in symbol) {
 			for (let i = 0; i < symbol.array.length; ++i) {
-				if (symbol.array[i].array_type == eArrayType.CELL) {
-					detail += '[' + symbol.array[i].array_value + ']';
-				} else if (symbol.array[i].array_type == eArrayType.PACKED) {
-					detail += '{' + symbol.array[i].array_value + '}';
+				detail += symbol.array[i].array_type == eArrayType.PACKED ? '{' : '[';
+				if (symbol.array[i].array_value > 0) {
+					detail += symbol.array[i].array_value;
 				}
-			}
-		}
-		else if (symbol.ident == iREFARRAY) {
-			for (let i = 0; i < (symbol as PawnArgument).dimension; ++i) {
-				detail += "[]";
+				detail += symbol.array[i].array_type == eArrayType.PACKED ? '}' : ']';
 			}
 		}
 		else if (symbol.ident == iINTERNAL && (symbol.usage & uENUMLIST) == uENUMLIST) {
@@ -443,27 +446,15 @@ export class Grammar
 			let reference: string | undefined = undefined;
 
 			if (argument.hasdefault) {
-				if (typeof argument.reference == "number") {
-					if (argument.reference != 0) {
-						for (let i = 0; i < this.constantExpressions.length; ++i) {
-							if (argument.reference == this.constantExpressions[i].tagid && argument.reference_value == this.constantExpressions[i].value) {
-								reference = this.constantExpressions[i].name;
-								break;
-							}
-						}
-					}
-				}
 
 				detail += " = ";
 
-				if (reference) {
-					detail += reference;
+				if (argument.hasdefault & uTAGOF) {
+					detail += "tagof(" + argument.default_value + ")";
+				} else if (argument.hasdefault & uSIZEOF) {
+					detail += "sizeof(" + argument.default_value + ")";
 				} else {
-					if (typeof argument.default_value == "number" || argument.default_value.length > 0) {
-						detail += argument.default_value;
-					} else {
-						detail += "\"\"";
-					} 
+					detail += argument.default_value;
 				}
 			}
 		}
@@ -485,6 +476,17 @@ export class Grammar
 						}
 
 						this.makeDetail(func.argument[i], func);
+
+						/* find argument in variables table */
+						let arg = this.variables.find((sym: PawnSymbol) => {
+							return (sym.scope == sLOCAL && sym.file_number == func.file_number && 
+								sym.line_number >= func.line_number && sym.line_number < func.functn_end &&
+								sym.name === func.argument[i].name);
+						}) as PawnArgument;
+
+						if (arg !== undefined) {
+							arg.isargof = func;
+						}
 					}
 				}
 
@@ -558,7 +560,7 @@ export class Grammar
 			assert(prefixLength > 0);
 			const fixedText: string = text.substr(start);
 			substitute = this.substitutions.find((value: PawnSubstitute) => {
-				return this.symbolFinder(value, fixedText, -1, prefixLength);
+				return this.symbolFinder(value, fixedText, -1, 0, prefixLength);
 			});
 
 			if (substitute !== undefined) {
@@ -994,13 +996,16 @@ export class Grammar
 			(charCode >= 'A'.charCodeAt(0) && charCode <= 'F'.charCodeAt(0));
 	}
 
-	symbolFinder(symbol: PawnSubstitute | PawnSymbol | PawnConstantValue, name: string = "", fileNumber: number = -1, prefixLength: number = 0): boolean {
+	symbolFinder(symbol: PawnSubstitute | PawnSymbol | PawnConstantValue | PawnVariable, name: string = "", fileNumber: number = -1, lineNumber: number = 0, prefixLength: number = 0): boolean {
 		if (Grammar.isSubstitute(symbol)) {
 			return (name.length == 0 || name.substr(0, prefixLength) == symbol.pattern.substr(0, symbol.match_length));
 		} else if (Grammar.isConstantValue(symbol) || Grammar.isConstExpression(symbol)) {
 			return (name.length == 0 || name === symbol.name);
+		} else if (symbol.scope == sLOCAL || symbol.scope == sSTATIC) {
+			const localSym = symbol as PawnVariable;
+			return ((fileNumber == localSym.file_number) && (lineNumber >= localSym.line_number-1) && (lineNumber < localSym.scope_end-1) && (name.length == 0 || name === localSym.name));
 		} else {
-			return ((name.length == 0 || name === symbol.name) && (symbol.scope == sGLOBAL || (fileNumber == symbol.file_number)));
+			return ((name.length == 0 || name === symbol.name) && ((symbol.scope == sGLOBAL && !("fvisible" in symbol)) || (fileNumber == symbol.file_number)));
 		}
 	}
 
@@ -1014,34 +1019,80 @@ export class Grammar
 		return -1;
 	}
 
-	docSymbolFinder(fileNumber: number): SymbolInformation[] {
-		let symbols: SymbolInformation[] = [];
+	makeDocumentSymbol(sym: PawnSymbol): DocumentSymbol {
+		let name: string = sym.name;
+		let kind: SymbolKind =  SymbolKind.Variable;
+		let detail: string = sym.detail.replace(new RegExp('\\b('+sym.name+')\\b', 'g'), "");
+		let r: Range= Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
+		let sr: Range= Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
+		let children: DocumentSymbol[] | undefined = undefined;
 
-		this.substitutions.forEach((sym: PawnSubstitute) => {
-			if (sym.file_number == fileNumber && sym.line_number > 0) {
-				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
-				symbols.push(SymbolInformation.create(sym.pattern, sym.usage & uSUBSCRIPT ? SymbolKind.Interface : SymbolKind.Constant, range));
+		if (Grammar.isFunction(sym)) {
+			kind = SymbolKind.Function;
+			r.end.line = sym.functn_end;
+			children = this.getLocalSymbols(sym);
+		} else if (Grammar.isSubstitute(sym)) {
+			name = sym.pattern;
+			kind = sym.usage & uSUBSCRIPT ? SymbolKind.Interface : SymbolKind.Constant;
+			detail = sym.substitution.replace(/([\r\n ]+)/gm, " ");
+		} else if (Grammar.isEnumeratorField(sym)) {
+			kind = SymbolKind.EnumMember;
+		} else if (Grammar.isConstantValue(sym) || Grammar.isConstExpression(sym)) {
+			kind = SymbolKind.Constant;
+		} else if (Grammar.isEnumeratorField(sym)) {
+			kind = SymbolKind.EnumMember;
+		} else if ("array" in sym) {
+			kind = SymbolKind.Array;
+		}
+
+		return DocumentSymbol.create(name, detail, kind, r, sr, children);
+	}
+
+	getLocalSymbols(functn: PawnFunction): DocumentSymbol[] | undefined {
+		let locals: DocumentSymbol[] = [];
+		const grammar: Grammar = this;
+
+		/* locals */
+		grammar.variables.forEach((sym: PawnSymbol) => {
+			if ((sym.scope == sLOCAL || sym.scope == sSTATIC) && sym.file_number == functn.file_number && 
+				sym.line_number > functn.line_number && sym.line_number < functn.functn_end) {
+				locals.push(grammar.makeDocumentSymbol(sym));
 			}
 		});
 
-		this.constantExpressions.forEach((sym: PawnConstantExpression) => {
+		if (locals.length > 0) {
+			return locals;
+		}
+
+		return undefined;
+	}
+
+	getDocumentSymbols(fileNumber: number): DocumentSymbol[] {
+		let symbols: DocumentSymbol[] = [];
+		const grammar: Grammar = this;
+
+		grammar.substitutions.forEach((sym: PawnSubstitute) => {
 			if (sym.file_number == fileNumber && sym.line_number > 0) {
-				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
-				symbols.push(SymbolInformation.create(sym.name, SymbolKind.Constant, range));
+				symbols.push(grammar.makeDocumentSymbol(sym));
 			}
 		});
 
-		this.variables.forEach((sym: PawnSymbol) => {
+		grammar.constantExpressions.forEach((sym: PawnConstantExpression) => {
 			if (sym.file_number == fileNumber && sym.line_number > 0) {
-				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
-				symbols.push(SymbolInformation.create(sym.name, "array" in sym ? SymbolKind.Array : SymbolKind.Variable, range));
+				symbols.push(grammar.makeDocumentSymbol(sym));
 			}
 		});
 
-		this.functions.forEach((sym: PawnFunction) => {
+		/* globals */
+		grammar.variables.forEach((sym: PawnSymbol) => {
+			if (sym.file_number == fileNumber && sym.line_number > 0 && sym.scope == sGLOBAL) {
+				symbols.push(grammar.makeDocumentSymbol(sym));
+			}
+		});
+
+		grammar.functions.forEach((sym: PawnFunction) => {
 			if (sym.file_number == fileNumber && sym.line_number > 0) {
-				const range = Range.create(sym.line_number-1, 0, sym.line_number-1, 0);
-				symbols.push(SymbolInformation.create(sym.name, SymbolKind.Function, range));
+				symbols.push(grammar.makeDocumentSymbol(sym));
 			}
 		});
 

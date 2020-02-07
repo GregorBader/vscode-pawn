@@ -25,13 +25,14 @@ import {
 	DidChangeWatchedFilesNotification,
 	Definition,
 	Location,
-	DocumentSymbolParams,
-	SymbolInformation
+	SymbolInformation,
+	DocumentSymbol
 } from "vscode-languageserver";
+import { DocumentSymbolParams } from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri"
 import { Parser } from "./Parser";
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
-import { PawnFunction, PawnSubstitute, Grammar, PawnSymbol, PawnEnumeratorField } from "./Grammar";
+import { PawnFunction, PawnArgument, PawnSubstitute, Grammar, PawnSymbol, PawnEnumeratorField } from "./Grammar";
 import { ParserManager } from "./ParserManager";
 
 let connection: Connection = createConnection(ProposedFeatures.all);
@@ -249,6 +250,7 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem
 
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
+	const lineNumber: number = params.position.line;
 	
 	if (isPositionInString(document, params.position) || isPositionInComment(document, params.position)) {
 		//connection.console.log("You are in string or comment.");
@@ -289,7 +291,7 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionItem
 		};
 	}));
 
-	completionItemList = completionItemList.concat(grammar.variables.filter((sym) => { return grammar.symbolFinder(sym, "", fileNumber); })!.map((en) => {
+	completionItemList = completionItemList.concat(grammar.variables.filter((sym) => { return grammar.symbolFinder(sym, "", fileNumber, lineNumber); })!.map((en) => {
 		return {
 			label: en.name,
 			kind: CompletionItemKind.Variable,
@@ -398,6 +400,7 @@ connection.onHover(async (params: TextDocumentPositionParams, token: Cancellatio
 
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
+	const lineNumber: number = params.position.line;
 
 	if (isPositionInString(document, params.position) || isPositionInComment(document, params.position)) {
 		//connection.console.log("You are in string or comment.");
@@ -412,11 +415,11 @@ connection.onHover(async (params: TextDocumentPositionParams, token: Cancellatio
 
 	let symbol;
 	
-	if (!(symbol = grammar.substitutions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, callToken.token.length); }))) {
+	if (!(symbol = grammar.substitutions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, lineNumber, callToken.token.length); }))) {
 		if (!(symbol = grammar.tags.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
 			if (!(symbol = grammar.constantExpressions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
 				if (!(symbol = grammar.enumerators.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
-					if (!(symbol = grammar.variables.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+					if (!(symbol = grammar.variables.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, lineNumber); }))) {
 						if (!(symbol = grammar.functions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
 							//connection.console.log("Symbol " + callToken.token + " cannot found.");
 							return null;
@@ -443,6 +446,14 @@ connection.onHover(async (params: TextDocumentPositionParams, token: Cancellatio
 		if (attachString.length > 0) {
 			markupContent.value += "\n***\nReplaced to:\n\`\`\`pawn\n" + attachString + "\n\`\`\`";
 		}
+	} else if ("isargof" in symbol) {
+		const arg: PawnArgument = symbol as PawnArgument;
+
+		if (arg.isargof !== undefined) {
+			markupContent.value += "\n***\n\`\`\`pawn\n\n" + arg.isargof.detail + "\n";
+			markupContent.value += "~".repeat(arg.isargof.detail.search(new RegExp('\\b('+arg.name+')\\b', 'g'))) + "^";
+			markupContent.value += "\n\`\`\`";
+		}
 	}
 
 	return {
@@ -463,6 +474,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams, token: Cancel
 
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
+	const lineNumber: number = params.position.line;
 
 	if (isPositionInString(document, params.position) || isPositionInComment(document, params.position)) {
 		//connection.console.log("You are in string or comment.");
@@ -477,11 +489,11 @@ connection.onDefinition(async (params: TextDocumentPositionParams, token: Cancel
 
 	let symbol;
 	
-	if (!(symbol = grammar.substitutions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, callToken.token.length); }))) {
+	if (!(symbol = grammar.substitutions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, lineNumber, callToken.token.length); }))) {
 		if (!(symbol = grammar.tags.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
 			if (!(symbol = grammar.constantExpressions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
 				if (!(symbol = grammar.enumerators.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
-					if (!(symbol = grammar.variables.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
+					if (!(symbol = grammar.variables.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber, lineNumber); }))) {
 						if (!(symbol = grammar.functions.find((sym) => { return grammar.symbolFinder(sym, callToken.token, fileNumber); }))) {
 							//connection.console.log("Symbol " + callToken.token + " cannot found.");
 							return null;
@@ -502,7 +514,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams, token: Cancel
 	return null;
 });
 
-connection.onDocumentSymbol(async (params: DocumentSymbolParams, token: CancellationToken): Promise<SymbolInformation[] | null> => {
+connection.onDocumentSymbol(async (params: DocumentSymbolParams, token: CancellationToken): Promise<SymbolInformation[] | DocumentSymbol[] | undefined | null> => {
 	const documentPath: string = uriToFilePath(params.textDocument!.uri)!;
 	const parser: Parser | undefined = await ParserManager.getParser(documentPath);
 
@@ -516,7 +528,7 @@ connection.onDocumentSymbol(async (params: DocumentSymbolParams, token: Cancella
 	const grammar: Grammar = parser.grammar;
 	const fileNumber: number = grammar.getFileNumber(documentPath);
 
-	const result = grammar.docSymbolFinder(fileNumber);
+	const result = grammar.getDocumentSymbols(fileNumber);
 	// connection.console.log(" symbols: " + result.length);
 	return result;
 });
