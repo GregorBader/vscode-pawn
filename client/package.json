@@ -5,14 +5,14 @@
 	"license": "MIT",
 	"version": "0.0.1",
 	"engines": {
-		"vscode": "^1.23.0"
+		"vscode": "^1.33.0"
 	},
 	"scripts": {
 		"update-vscode": "vscode-install",
 		"postinstall": "vscode-install"
 	},
 	"dependencies": {
-		"vscode-languageclient": "^4.4.2"
+		"vscode-languageclient": "^5.2.1"
 	},
 	"devDependencies": {
 		"vscode": "^1.1.36"

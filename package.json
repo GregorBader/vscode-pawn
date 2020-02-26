@@ -18,10 +18,11 @@
 		"Programming Languages"
 	],
 	"engines": {
-		"vscode": "^1.23.0"
+		"vscode": "^1.33.0"
 	},
 	"activationEvents": [
-		"onLanguage:pawn"
+		"onLanguage:pawn",
+		"onCommand:workbench.action.tasks.runTask"
 	],
 	"keywords": [
 		"Pawn"
@@ -47,17 +48,11 @@
 				},
 				"pawn.mainFile": {
 					"type": "string",
-					"default": "main.p",
+					"default": "",
 					"description": "Main starting file for compile e.g. main.p"
 				}
 			}
 		},
-		"commands": [
-			{
-				"command": "pawn.compile",
-				"title": "PAWN Compile"
-			}
-		],
 		"languages": [
 			{
 				"id": "pawn",
@@ -81,10 +76,34 @@
 				"path": "./syntaxes/pawn.json"
 			}
 		],
-		"keybindings": [
+		"problemMatchers": [
 			{
-				"command": "pawn.compile",
-				"key": "F5"
+				"name": "pawncc",
+				"owner": "pawn",
+				"fileLocation": [
+					"absolute"
+				],
+				"pattern": {
+					"regexp": "^(.*?)\\(([0-9]*)[- 0-9]*\\) \\: (fatal error|error|warning) [0-9]*\\: (.*)$",
+					"file": 1,
+					"location": 2,
+					"severity": 3,
+					"message": 4
+				}
+			}
+		],
+		"taskDefinitions": [
+			{
+				"type": "pawnccbuildscript",
+				"required": ["name", "taskType"],
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"taskType": {
+						"type": "integer"
+					}
+				}
 			}
 		]
 	},
@@ -96,7 +115,7 @@
 	},
 	"devDependencies": {
 		"@types/mocha": "^5.2.7",
-		"@types/node": "^8.10.59",
+		"@types/node": "^12.11.7",
 		"tslint": "^5.20.1",
 		"typescript": "^3.7.5",
 		"vscode": "^1.1.36"

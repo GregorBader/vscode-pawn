@@ -8,9 +8,10 @@ import {
 	ServerOptions,
 	TransportKind
 } from "vscode-languageclient";
+import { TaskProvider } from './tasks';
 
 let client: LanguageClient;
-let outputChannel: vscode.OutputChannel | undefined = undefined;
+let taskProvider: TaskProvider;
 
 export function activate(context: vscode.ExtensionContext) {
 	let serverModule = context.asAbsolutePath(path.join("server", "out", "server.js"));
@@ -54,75 +55,25 @@ export function activate(context: vscode.ExtensionContext) {
 		clientOptions
 	);
 
-	client.onReady().then(() => {
-		client.onRequest("compile", runCompile);
-	});
-
 	client.start();
 
-	let disposible = vscode.commands.registerTextEditorCommand("pawn.compile", requestCompile);
-	context.subscriptions.push(disposible);
+	taskProvider = new TaskProvider();
+	taskProvider.start();
 
 	console.log("PAWN Language extension activated.");
 }
 
 export function deactivate(): Thenable<void> | undefined {
+
+	if (taskProvider) {
+		taskProvider.dispose();
+	}
+
 	if (!client) {
 		return undefined;
 	}
 
 	return client.stop();
-}
-
-function requestCompile(textEditor: vscode.TextEditor): void {
-	if (textEditor.document.languageId !== "pawn") {
-		return;
-	}
-
-	if (!isValidCompilerPath()) {
-		showNeedCompilerPath();
-		return;
-	}
-
-	client.sendRequest("compile_request", textEditor.document.uri.toString());
-}
-
-function runCompile(args: { args: string[] }) {
-	if (outputChannel === undefined) {
-		outputChannel = vscode.window.createOutputChannel("PAWN Compiler");
-	}
-
-	const argList: string[] = args.args;
-
-	outputChannel.clear();
-	outputChannel.appendLine("Compiling \"" + argList[0] + "\"...");
-	outputChannel.appendLine("");
-
-	const compiler: ChildProcess =
-		spawn(path.join(vscode.workspace.getConfiguration("pawn").get("compilerPath"), "pawncc.exe"), argList, { cwd: path.dirname(argList[0]) }); // args[0] always give full path
-
-	compiler.on("error", (err: Error) => {
-		outputChannel.appendLine("Compilation aborted.");
-		outputChannel.appendLine("Result: " + err.message);
-	});
-
-	compiler.on("exit", (code: number, signal: string) => {
-		outputChannel.appendLine("Compilation exited with " + code + ".");
-	});
-
-	compiler.stderr.on("data", (chunk: string) => {
-		if (chunk) {
-			outputChannel.append(chunk.toString());
-		}
-	});
-
-	compiler.stdout.on("data", (chunk: string) => {
-		if (chunk) {
-			outputChannel.append(chunk.toString());
-		}
-	});
-
-	outputChannel.show(false);
 }
 
 function showNeedCompilerPath(): void {
