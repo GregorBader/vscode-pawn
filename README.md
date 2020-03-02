@@ -9,7 +9,7 @@ It is a fork from original work: https://github.com/zndn1997/vscode-pawn.
 * Multiple workspaces
 * Hover
 * Signature help
-* Compile
+* Compile task
 * Symbol outline
 * Go to/Peek definition
 
@@ -19,7 +19,7 @@ It is a fork from original work: https://github.com/zndn1997/vscode-pawn.
 3. Configure your compiler path, compile options. (**DO NOT** include pawncc.exe to compiler path. Just type directory. Ex: C:\pawncc\bin)
 
 ## Keybinds
-* F5 to compile current workspace or single file.
+* Default VS Code (Ctrl+Shift+B to run build task)
 
 ## Contact
 If you find some bug, Please post an issue to the repository.

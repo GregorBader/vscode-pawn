@@ -95,7 +95,10 @@
 		"taskDefinitions": [
 			{
 				"type": "pawnccbuildscript",
-				"required": ["name", "taskType"],
+				"required": [
+					"name",
+					"taskType"
+				],
 				"properties": {
 					"name": {
 						"type": "string"
