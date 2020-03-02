@@ -65,8 +65,7 @@ class FolderTaskProvider {
 
 			argList = argList.concat(config.get("compileOptions"));
 			argList.push(file);
-
-			return new vscode.Task(
+			let task = new vscode.Task(
 				kind, 
 				this.workspaceFolder,
 				name, 
@@ -74,6 +73,10 @@ class FolderTaskProvider {
 				new vscode.ShellExecution(command, argList),
 				'$pawncc'
 			);
+			task.definition = kind;
+			task.group = vscode.TaskGroup.Build;
+
+			return task;
 		} catch (error) {
 			return undefined;
 		}
@@ -188,7 +191,7 @@ export class TaskProvider {
 		argList = argList.concat(config.get("compileOptions"));
 		argList.push(currentFile);
 
-		return new vscode.Task(
+		let task = new vscode.Task(
 			kind, 
 			vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri),
 			// vscode.TaskScope.Global,
@@ -197,7 +200,10 @@ export class TaskProvider {
 			new vscode.ShellExecution(command, argList),
 			'$pawncc'
 		);
+		task.definition = kind;
+		task.group = vscode.TaskGroup.Build;
 
+		return task;
 	}
 
 	private getTasks(): Promise<vscode.Task[]> {
