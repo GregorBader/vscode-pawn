@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.0.2
+- tbd
+
 ## v0.0.1
 - Added support for PAWN 4.x
 - Added "Symbol outline", "Go to/Peek definition" and "Compile task" feature
